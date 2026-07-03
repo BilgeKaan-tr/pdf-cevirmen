@@ -3,7 +3,7 @@ import type { Block, TranslationEngine } from "./types";
 import { PdfPasswordError, GeminiQuotaError } from "./types";
 import { loadPdf, extractPageText } from "./pdf/extract";
 import {
-  computeScale, renderPageToCanvas, maskBlocks, canvasToJpeg, makePreview,
+  computeScale, renderPageToCanvas, maskBlocks, canvasToJpeg, makePreview, drawTranslations,
 } from "./pdf/render";
 import { OutputPdfBuilder } from "./pdf/build";
 import { GoogleGtxEngine } from "./translate/google";
@@ -211,6 +211,7 @@ async function startTranslation(): Promise<void> {
         }
         maskBlocks(canvas, blocks, scale);
         const jpeg = await canvasToJpeg(canvas);
+        drawTranslations(canvas, blocks, scale);
         pair.appendChild(makePreview(canvas));
         previewEl.appendChild(pair);
         const out = { jpeg, widthPt: viewport.width, heightPt: viewport.height };

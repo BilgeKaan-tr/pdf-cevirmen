@@ -1,5 +1,6 @@
 import type { PDFPageProxy } from "pdfjs-dist";
 import type { Block } from "../types";
+import { fitText } from "../layout/fit";
 
 export const MAX_EDGE_PX = 3000;
 const MASK_PAD_PT = 1.5;
@@ -60,15 +61,44 @@ export function maskBlocks(canvas: HTMLCanvasElement, blocks: Block[], scale: nu
   const bmp: Bitmap = { data: img.data, width: img.width, height: img.height };
   for (const b of blocks) {
     if (!b.translated) continue;
+    // alt çıkıntı payı: y/p/g gibi harflerin taban çizgisi altındaki kuyrukları
+    const descent = 0.3 * b.fontSize;
     const rect = {
       x: (b.x - MASK_PAD_PT) * scale,
       y: (b.y - MASK_PAD_PT) * scale,
       width: (b.width + 2 * MASK_PAD_PT) * scale,
-      height: (b.height + 2 * MASK_PAD_PT) * scale,
+      height: (b.height + 2 * MASK_PAD_PT + descent) * scale,
     };
     const [r, g, bb] = sampleBackground(bmp, rect);
     ctx.fillStyle = `rgb(${r},${g},${bb})`;
     ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+  }
+}
+
+/**
+ * Önizleme için çeviri metnini tuvale çizer (çıktı PDF'ine pdf-lib gerçek
+ * metni ayrıca gömer; bu yalnızca ekranda görünen yaklaşık kopyadır).
+ */
+export function drawTranslations(canvas: HTMLCanvasElement, blocks: Block[], scale: number): void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.fillStyle = "#000";
+  ctx.textBaseline = "alphabetic";
+  const measurer = {
+    width: (t: string, s: number) => {
+      ctx.font = `${s}px "Noto Sans", "Segoe UI", sans-serif`;
+      return ctx.measureText(t).width;
+    },
+  };
+  for (const b of blocks) {
+    if (!b.translated) continue;
+    const fit = fitText(b.translated, b.width * scale, b.height * scale, b.fontSize * scale, measurer, 6 * scale);
+    ctx.font = `${fit.size}px "Noto Sans", "Segoe UI", sans-serif`;
+    fit.lines.forEach((line, i) => {
+      const bottomOffset = fit.lineHeight * (i + 1);
+      if (bottomOffset > b.height * scale * 1.1 + fit.lineHeight * 0.01) return;
+      ctx.fillText(line, b.x * scale, b.y * scale + bottomOffset - fit.size * 0.2);
+    });
   }
 }
 
