@@ -5,6 +5,7 @@ export interface BatchOpts {
   concurrency: number;
   retryDelays: number[];
   signal?: AbortSignal;
+  retryIf?: (e: unknown) => boolean;
 }
 
 /**
@@ -17,13 +18,13 @@ export async function runBatch(
   request: (text: string) => Promise<string>,
   opts: BatchOpts
 ): Promise<(string | null)[]> {
-  const { concurrency, retryDelays, signal } = opts;
+  const { concurrency, retryDelays, signal, retryIf } = opts;
   const chunks = makeChunks(texts);
   const out: (string | null)[] = new Array(texts.length).fill(null);
   await mapPool(chunks, concurrency, async (chunk) => {
     let parts: string[] | null = null;
     try {
-      const translated = await withRetry(() => request(chunk.text), { delays: retryDelays, signal });
+      const translated = await withRetry(() => request(chunk.text), { delays: retryDelays, signal, retryIf });
       parts = splitTranslated(chunk, translated);
     } catch (e) {
       if (isAbort(e)) throw e;
@@ -34,7 +35,7 @@ export async function runBatch(
     }
     for (const blockIdx of chunk.indices) {
       try {
-        out[blockIdx] = await withRetry(() => request(texts[blockIdx]), { delays: retryDelays, signal });
+        out[blockIdx] = await withRetry(() => request(texts[blockIdx]), { delays: retryDelays, signal, retryIf });
       } catch (e) {
         if (isAbort(e)) throw e;
         out[blockIdx] = null;

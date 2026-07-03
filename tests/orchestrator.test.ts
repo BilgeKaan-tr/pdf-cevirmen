@@ -18,6 +18,15 @@ describe("LingvaEngine", () => {
     expect(out).toEqual(["merhaba"]);
     expect(String(fetchFn.mock.calls[1][0])).toContain("https://b/api/v1/auto/tr/hello");
   });
+  it("tüm örnekler çökerse devre kesici açılır, sonraki çağrı ağa gitmez", async () => {
+    const fetchFn = vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) }));
+    const engine = new LingvaEngine(["https://a", "https://b"], fetchFn as unknown as typeof fetch, [0]);
+    await engine.translateBatch(["hello"], "auto", "tr");
+    fetchFn.mockClear();
+    const out = await engine.translateBatch(["merhaba"], "auto", "tr");
+    expect(out).toEqual([null]);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
 });
 
 describe("Orchestrator", () => {

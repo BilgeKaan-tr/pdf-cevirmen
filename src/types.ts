@@ -50,3 +50,7 @@ export class PdfPasswordError extends Error {
 export class GeminiQuotaError extends Error {
   constructor() { super("gemini quota"); this.name = "GeminiQuotaError"; }
 }
+
+export class RateLimitError extends Error {
+  constructor() { super("rate limited"); this.name = "RateLimitError"; }
+}

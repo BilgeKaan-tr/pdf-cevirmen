@@ -4,6 +4,10 @@ import { isAbort } from "../util";
 
 export class LingvaEngine implements TranslationEngine {
   readonly id = "lingva" as const;
+  // Tüm örnekler bir kez topluca başarısız olursa (genelde arka planda
+  // Google'ın kendisi engellenmiştir) devre açılır; kalan çalışma boyunca
+  // her sayfada aynı yavaş çok-örnek denemesi tekrarlanmaz.
+  private circuitOpen = false;
 
   constructor(
     private instances: string[] = ["https://lingva.ml", "https://translate.plausibility.cloud"],
@@ -12,6 +16,7 @@ export class LingvaEngine implements TranslationEngine {
   ) {}
 
   private async request(text: string, source: string, target: string, signal?: AbortSignal): Promise<string> {
+    if (this.circuitOpen) throw new Error("lingva devre dışı (art arda hata)");
     let lastErr: unknown = new Error("lingva erişilemedi");
     for (const base of this.instances) {
       try {
@@ -28,10 +33,12 @@ export class LingvaEngine implements TranslationEngine {
         lastErr = e;
       }
     }
+    this.circuitOpen = true;
     throw lastErr;
   }
 
   translateBatch(texts: string[], source: string, target: string, signal?: AbortSignal) {
+    if (this.circuitOpen) return Promise.resolve(texts.map(() => null));
     return runBatch(texts, (t) => this.request(t, source, target, signal), {
       concurrency: 3,
       retryDelays: this.retryDelays,

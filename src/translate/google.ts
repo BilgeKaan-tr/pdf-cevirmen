@@ -1,4 +1,4 @@
-import type { TranslationEngine } from "../types";
+import { RateLimitError, type TranslationEngine } from "../types";
 import { runBatch } from "./batch";
 
 export function parseGtxResponse(data: unknown): string {
@@ -12,6 +12,11 @@ export function parseGtxResponse(data: unknown): string {
 
 export class GoogleGtxEngine implements TranslationEngine {
   readonly id = "google" as const;
+  // Google 429 (çok fazla istek) döndürdüğünde servis bir süre engellenmiş
+  // demektir; yüzlerce sayfa boyunca aynı hatayı tekrar tekrar denemek hem
+  // yavaşlatır hem engeli kötüleştirir. Bir kez tetiklenince devre açılır
+  // ve motor kalan çalışma boyunca hiç ağ isteği yapmadan null döner.
+  private circuitOpen = false;
 
   constructor(
     private baseUrl = "https://translate.googleapis.com",
@@ -20,6 +25,7 @@ export class GoogleGtxEngine implements TranslationEngine {
   ) {}
 
   private async request(text: string, source: string, target: string, signal?: AbortSignal): Promise<string> {
+    if (this.circuitOpen) throw new RateLimitError();
     const url = `${this.baseUrl}/translate_a/single?client=gtx&sl=${encodeURIComponent(source)}&tl=${encodeURIComponent(target)}&dt=t`;
     const res = await this.fetchFn(url, {
       method: "POST",
@@ -27,15 +33,21 @@ export class GoogleGtxEngine implements TranslationEngine {
       body: "q=" + encodeURIComponent(text),
       signal,
     });
+    if (res.status === 429) {
+      this.circuitOpen = true;
+      throw new RateLimitError();
+    }
     if (!res.ok) throw new Error(`gtx HTTP ${res.status}`);
     return parseGtxResponse(await res.json());
   }
 
   translateBatch(texts: string[], source: string, target: string, signal?: AbortSignal) {
+    if (this.circuitOpen) return Promise.resolve(texts.map(() => null));
     return runBatch(texts, (t) => this.request(t, source, target, signal), {
       concurrency: 6,
       retryDelays: this.retryDelays,
       signal,
+      retryIf: (e) => !(e instanceof RateLimitError),
     });
   }
 }

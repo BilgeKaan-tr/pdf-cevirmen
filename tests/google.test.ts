@@ -61,4 +61,21 @@ describe("GoogleGtxEngine", () => {
     const out = await engine.translateBatch(["hi"], "en", "tr");
     expect(out).toEqual([null]);
   });
+  it("429 alınca devre kesici açılır, aynı çağrıda yeniden denemez", async () => {
+    const fetchFn = vi.fn(async () => errResponse(429));
+    const engine = new GoogleGtxEngine("https://x", fetchFn as unknown as typeof fetch, [0, 0, 0]);
+    const out = await engine.translateBatch(["hi"], "en", "tr");
+    expect(out).toEqual([null]);
+    // 429'da retryIf false döndüğü için withRetry hemen durmalı: tek deneme
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+  it("devre kesici açıkken sonraki translateBatch çağrıları ağ isteği yapmaz", async () => {
+    const fetchFn = vi.fn(async () => errResponse(429));
+    const engine = new GoogleGtxEngine("https://x", fetchFn as unknown as typeof fetch, [0]);
+    await engine.translateBatch(["hi"], "en", "tr");
+    fetchFn.mockClear();
+    const out = await engine.translateBatch(["merhaba", "dünya"], "en", "tr");
+    expect(out).toEqual([null, null]);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
 });
