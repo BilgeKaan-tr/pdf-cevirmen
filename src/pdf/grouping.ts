@@ -66,6 +66,11 @@ interface OpenBlock extends Block {
   lastLineH: number;
 }
 
+// Referans/kaynakça listeleri gibi sık satır aralıklı içerikler sınırsız
+// büyürse hem çeviri isteklerini (Lingva URL sınırı, dev gövdeler) hem de
+// çıktı yerleşimini bozar. Bir blok bu boyutu aşınca yeni blok başlatılır.
+const MAX_BLOCK_CHARS = 2000;
+
 export function groupIntoBlocks(lines: Line[]): Block[] {
   const blocks: OpenBlock[] = [];
   let cur: OpenBlock | null = null;
@@ -76,7 +81,8 @@ export function groupIntoBlocks(lines: Line[]): Block[] {
         Math.min(cur.x + cur.width, line.x + line.width) - Math.max(cur.x, line.x);
       const gapOk = line.y - cur.lastLineY < 1.6 * cur.lastLineH;
       const sizeOk = Math.abs(line.fontSize - cur.fontSize) < cur.fontSize * 0.2;
-      merge = gapOk && overlap > 0 && sizeOk;
+      const sizeCapOk = cur.text.length + 1 + line.text.length <= MAX_BLOCK_CHARS;
+      merge = gapOk && overlap > 0 && sizeOk && sizeCapOk;
     }
     if (cur && merge) {
       cur.text = cur.text.endsWith("-")

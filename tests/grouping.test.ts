@@ -71,4 +71,13 @@ describe("groupIntoBlocks", () => {
     const blocks = groupIntoBlocks([line("42", 100)]);
     expect(blocks[0].translatable).toBe(false);
   });
+  it("dev referans listesi gibi sıkı satırlar 2000 karakterde bölünür", () => {
+    // her satır 60 karakter; 40 satır sıkı aralıkla (12pt) = 2400 karakter,
+    // sınırsız birleşse tek blok olurdu — tavan onu bölmeli
+    const entry = "Smith J, Doe A: A very long reference entry title here. J 1:1-9, 2020. ";
+    const lines = Array.from({ length: 40 }, (_, i) => line(entry, 100 + i * 13, 10));
+    const blocks = groupIntoBlocks(lines);
+    expect(blocks.length).toBeGreaterThan(1);
+    for (const b of blocks) expect(b.text.length).toBeLessThanOrEqual(2000);
+  });
 });
