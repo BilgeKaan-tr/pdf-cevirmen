@@ -33,7 +33,7 @@ describe("GeminiEngine", () => {
     const fetchFn = vi.fn(async () => geminiOk("⟦0⟧bir\n⟦1⟧iki"));
     const out = await fastEngine(fetchFn).translateBatch(["one", "two"], "en", "tr");
     expect(out).toEqual(["bir", "iki"]);
-    const url = String(fetchFn.mock.calls[0][0]);
+    const url = String((fetchFn.mock.calls[0] as unknown[])[0]);
     expect(url).toContain("gemini-flash-latest:generateContent");
     expect(url).toContain("key=KEY");
   });

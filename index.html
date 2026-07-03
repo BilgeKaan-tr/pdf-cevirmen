@@ -3,10 +3,63 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PDF Çevirmen</title>
+  <title>PDF Çevirmen — Ücretsiz PDF Çevirisi</title>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <div id="app">PDF Çevirmen — yapım aşamasında</div>
+  <header>
+    <h1 id="app-name"></h1>
+    <p id="tagline"></p>
+  </header>
+
+  <main>
+    <section id="setup-screen">
+      <div id="dropzone" tabindex="0" role="button">
+        <p id="drop-hint"></p>
+        <input type="file" id="file-input" accept="application/pdf,.pdf" hidden />
+      </div>
+      <div class="controls">
+        <label>
+          <span id="source-label"></span>
+          <select id="source-lang"></select>
+        </label>
+        <label>
+          <span id="target-label"></span>
+          <select id="target-lang"></select>
+        </label>
+        <span id="engine-badge" class="badge"></span>
+      </div>
+      <details id="settings">
+        <summary id="settings-title"></summary>
+        <label>
+          <span id="gemini-key-label"></span>
+          <input type="password" id="gemini-key" autocomplete="off" />
+        </label>
+        <p id="gemini-key-hint" class="hint"></p>
+      </details>
+      <p id="privacy" class="hint"></p>
+    </section>
+
+    <section id="work-screen" hidden>
+      <div class="controls">
+        <label>
+          <span id="range-label"></span>
+          <input type="number" id="range-from" min="1" style="width:5em" />
+          –
+          <input type="number" id="range-to" min="1" style="width:5em" />
+        </label>
+        <button id="start-btn"></button>
+        <button id="cancel-btn" hidden></button>
+        <button id="download-btn" hidden></button>
+        <label><input type="checkbox" id="compare-toggle" /> <span id="compare-label"></span></label>
+      </div>
+      <p id="status" role="status"></p>
+      <progress id="progress" max="100" value="0" hidden></progress>
+      <div id="warnings"></div>
+      <div id="preview"></div>
+    </section>
+  </main>
+
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
