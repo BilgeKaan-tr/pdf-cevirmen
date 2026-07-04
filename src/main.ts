@@ -1,4 +1,7 @@
+import { registerSW } from "virtual:pwa-register";
 import { STR, SOURCE_LANGS, TARGET_LANGS } from "./strings";
+
+registerSW({ immediate: true });
 import type { Block, TranslationEngine } from "./types";
 import { PdfPasswordError, GeminiQuotaError, TranslationUnavailableError } from "./types";
 import { loadPdf, extractPageText } from "./pdf/extract";
