@@ -2,7 +2,9 @@ import type { TranslationEngine } from "../types";
 import { withRetry, isAbort } from "../util";
 import { Cooldown } from "./cooldown";
 
-const MODEL = "gemini-flash-latest";
+// Ücretsiz katman kotaları model başına ayrıdır: flash dolunca flash-lite'a,
+// o da dolunca gemma'ya geçilir — tek anahtarla günlük kapasite ~60 kat artar.
+const MODELS = ["gemini-flash-latest", "gemini-flash-lite-latest", "gemma-3-27b-it"];
 const GROUP_MAX_CHARS = 8000;
 
 export function buildGeminiPrompt(texts: string[], source: string, target: string): string {
@@ -56,35 +58,49 @@ export class GeminiEngine implements TranslationEngine {
     this.cooldown = new Cooldown({ now: opts.now, onWait: opts.onWait });
   }
 
+  private modelIdx = 0;
+
   private async request(prompt: string, signal?: AbortSignal): Promise<string> {
     if (this.cooldown.isBlocked()) throw new GeminiRateLimited();
     const wait = this.lastRequestAt + this.minIntervalMs - Date.now();
     if (wait > 0) await this.sleep(wait);
     this.lastRequestAt = Date.now();
-    const res = await this.fetchFn(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(this.apiKey)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.1 },
-        }),
-        signal,
+    for (;;) {
+      const model = MODELS[this.modelIdx];
+      const res = await this.fetchFn(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(this.apiKey)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.1 },
+          }),
+          signal,
+        }
+      );
+      // 429: bu modelin kotası doldu; 400/404: model adı artık geçersiz.
+      // İki durumda da listede sıradaki model varsa ona geç.
+      if (res.status === 429 || res.status === 404 || res.status === 400) {
+        if (this.modelIdx < MODELS.length - 1) {
+          this.modelIdx++;
+          continue;
+        }
+        if (res.status === 429) {
+          this.cooldown.escalate();
+          throw new GeminiRateLimited();
+        }
+        throw new Error(`Gemini HTTP ${res.status}`);
       }
-    );
-    if (res.status === 429) {
-      this.cooldown.escalate();
-      throw new GeminiRateLimited();
+      if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
+      const data = (await res.json()) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      };
+      const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+      if (text.length === 0) throw new Error("boş Gemini yanıtı");
+      this.cooldown.reset();
+      return text;
     }
-    if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
-    const data = (await res.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
-    if (text.length === 0) throw new Error("boş Gemini yanıtı");
-    this.cooldown.reset();
-    return text;
   }
 
   private retryOpts(signal?: AbortSignal) {

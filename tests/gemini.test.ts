@@ -48,18 +48,41 @@ describe("GeminiEngine", () => {
     expect(out).toEqual(["bir", "iki"]);
   });
 
-  it("429'da o istek başarısız olur ama motor KALICI kapanmaz", async () => {
+  it("flash kotası dolunca (429) otomatik olarak flash-lite modeline geçer", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(geminiErr(429))
+      .mockResolvedValueOnce(geminiOk("⟦0⟧selam"));
+    const out = await fastEngine(fetchFn).translateBatch(["x"], "en", "tr");
+    expect(out).toEqual(["selam"]);
+    expect(String((fetchFn.mock.calls[0] as unknown[])[0])).toContain("gemini-flash-latest");
+    expect(String((fetchFn.mock.calls[1] as unknown[])[0])).toContain("gemini-flash-lite-latest");
+  });
+
+  it("geçersiz model adında (404) sıradaki modele geçer", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(geminiErr(404))
+      .mockResolvedValueOnce(geminiOk("⟦0⟧selam"));
+    const out = await fastEngine(fetchFn).translateBatch(["x"], "en", "tr");
+    expect(out).toEqual(["selam"]);
+  });
+
+  it("TÜM modellerin kotası dolunca soğumaya girer ama KALICI kapanmaz", async () => {
     let t = 0;
     const onWait = vi.fn();
     const fetchFn = vi
       .fn()
-      .mockResolvedValueOnce(geminiErr(429))
+      .mockResolvedValueOnce(geminiErr(429)) // flash
+      .mockResolvedValueOnce(geminiErr(429)) // flash-lite
+      .mockResolvedValueOnce(geminiErr(429)) // gemma
       .mockResolvedValueOnce(geminiOk("⟦0⟧selam"));
     const engine = fastEngine(fetchFn, { now: () => t, onWait });
 
     const first = await engine.translateBatch(["x"], "en", "tr");
     expect(first).toEqual([null]);
     expect(onWait).toHaveBeenCalledWith(10_000);
+    expect(fetchFn).toHaveBeenCalledTimes(3);
 
     fetchFn.mockClear();
     const stillBlocked = await engine.translateBatch(["x"], "en", "tr");
