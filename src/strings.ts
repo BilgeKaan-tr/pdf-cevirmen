@@ -42,6 +42,12 @@ export const STR = {
   engineGemini: "Kaliteli motor (Gemini anahtarınız kayıtlı)",
   netPaused: "Bağlantı sorunu. Tekrar denemek için düğmeye basın.",
   retry: "Yeniden dene",
+  waitingRateLimit: (sec: number) =>
+    `Çeviri servisi yoğun — ${sec} saniye bekleniyor, sonra kaldığı yerden devam edecek…`,
+  errServiceDown:
+    "Çeviri servisine art arda ulaşılamadı (art arda sayfalar çevrilemedi). " +
+    "İnternetinizi kontrol edin ya da birkaç dakika sonra 'Çeviriyi Başlat' ile tekrar deneyin. " +
+    "O ana kadar biten sayfaları indirebilirsiniz.",
 } as const;
 
 // Kaynak diller: otomatik + yaygın diller (her alfabe kaynak olabilir)

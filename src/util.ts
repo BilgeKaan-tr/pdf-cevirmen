@@ -22,14 +22,30 @@ export interface RetryOpts {
   retryIf?: (e: unknown) => boolean;
 }
 
-const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/** İptal sinyaline saygılı bekleme: abort edilirse AbortError ile reddeder. */
+export function sleepAbortable(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new DOMException("aborted", "AbortError"));
+    const onAbort = () => {
+      clearTimeout(t);
+      reject(new DOMException("aborted", "AbortError"));
+    };
+    const t = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 export function isAbort(e: unknown): boolean {
   return e instanceof DOMException && e.name === "AbortError";
 }
 
 export async function withRetry<T>(fn: () => Promise<T>, opts: RetryOpts = {}): Promise<T> {
-  const { delays = [1000, 2000, 4000], signal, sleep = defaultSleep, retryIf = () => true } = opts;
+  const { delays = [1000, 2000, 4000], signal, retryIf = () => true } = opts;
+  // varsayılan bekleme iptale saygılıdır: kullanıcı iptal edince anında durur
+  const sleep = opts.sleep ?? ((ms: number) => sleepAbortable(ms, signal));
   let lastErr: unknown;
   for (let attempt = 0; attempt <= delays.length; attempt++) {
     if (signal?.aborted) throw new DOMException("aborted", "AbortError");

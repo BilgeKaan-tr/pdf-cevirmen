@@ -1,6 +1,11 @@
 import { groupIntoLines, groupIntoBlocks } from "./pdf/grouping";
 import type { PageText } from "./pdf/extract";
-import type { Block } from "./types";
+import { TranslationUnavailableError, type Block } from "./types";
+
+// Üst üste bu kadar sayfa hiç çevrilemezse servis erişilemez kabul edilir;
+// yüzlerce sayfayı sessizce çevirisiz kopyalamak yerine işlem durdurulur
+// (o ana kadarki sayfalar kısmî çıktı olarak indirilebilir).
+const MAX_CONSECUTIVE_FAILED_PAGES = 3;
 
 export interface PageStage {
   extract(pageNum: number): Promise<PageText>;
@@ -37,6 +42,7 @@ export async function runPipeline(
     totalBlocks: 0,
   };
   let done = 0;
+  let consecutiveFailed = 0;
   for (const pageNum of pageNumbers) {
     if (signal?.aborted) throw new DOMException("aborted", "AbortError");
     const pageText = await stage.extract(pageNum);
@@ -57,11 +63,14 @@ export async function runPipeline(
         translatableIdx.map((i) => blocks[i].text),
         signal
       );
+      let okOnPage = 0;
       translatableIdx.forEach((bi, j) => {
         result.totalBlocks++;
         const t = translations[j];
-        if (t) blocks[bi].translated = t;
-        else {
+        if (t) {
+          blocks[bi].translated = t;
+          okOnPage++;
+        } else {
           blocks[bi].failed = true;
           result.failedBlocks++;
         }
@@ -69,9 +78,14 @@ export async function runPipeline(
       const r = await stage.renderMasked(pageNum, blocks);
       await stage.addPage(r.jpeg, r.widthPt, r.heightPt, blocks);
       result.translatedPages++;
+      if (okOnPage === 0) consecutiveFailed++;
+      else consecutiveFailed = 0;
     }
     done++;
     events.onPageDone?.(done, pageNumbers.length);
+    if (consecutiveFailed >= MAX_CONSECUTIVE_FAILED_PAGES) {
+      throw new TranslationUnavailableError();
+    }
   }
   return result;
 }

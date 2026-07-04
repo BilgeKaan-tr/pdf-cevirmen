@@ -54,3 +54,7 @@ export class GeminiQuotaError extends Error {
 export class RateLimitError extends Error {
   constructor() { super("rate limited"); this.name = "RateLimitError"; }
 }
+
+export class TranslationUnavailableError extends Error {
+  constructor() { super("translation unavailable"); this.name = "TranslationUnavailableError"; }
+}

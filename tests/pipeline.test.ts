@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { runPipeline, type PageStage } from "../src/pipeline";
-import type { RawItem } from "../src/types";
+import { TranslationUnavailableError, type RawItem } from "../src/types";
 
 const textItem = (text: string, y: number): RawItem =>
   ({ text, x: 10, y, width: 200, height: 10, fontSize: 10, fontName: "F" });
@@ -56,5 +56,26 @@ describe("runPipeline", () => {
     ac.abort();
     const stage = fakeStage({ 1: threeItems });
     await expect(runPipeline([1], stage, {}, ac.signal)).rejects.toThrow();
+  });
+  it("3 sayfa üst üste hiç çevrilemezse TranslationUnavailableError fırlatır", async () => {
+    const stage = fakeStage(
+      { 1: threeItems, 2: threeItems, 3: threeItems, 4: threeItems },
+      async (texts) => texts.map(() => null)
+    );
+    await expect(runPipeline([1, 2, 3, 4], stage)).rejects.toBeInstanceOf(TranslationUnavailableError);
+    // ilk 3 sayfa yine de çıktıya eklendi (kısmî indirme mümkün)
+    expect(stage.added.length).toBe(3);
+  });
+  it("araya çevrilen sayfa girerse sayaç sıfırlanır, hata fırlamaz", async () => {
+    let call = 0;
+    const stage = fakeStage(
+      { 1: threeItems, 2: threeItems, 3: threeItems, 4: threeItems },
+      async (texts) => {
+        call++;
+        return texts.map(() => (call === 3 ? "ç" : null)); // 3. sayfa başarılı
+      }
+    );
+    const result = await runPipeline([1, 2, 3, 4], stage);
+    expect(result.translatedPages).toBe(4);
   });
 });

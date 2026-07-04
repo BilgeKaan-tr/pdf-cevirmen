@@ -1,6 +1,6 @@
 import { STR, SOURCE_LANGS, TARGET_LANGS } from "./strings";
 import type { Block, TranslationEngine } from "./types";
-import { PdfPasswordError, GeminiQuotaError } from "./types";
+import { PdfPasswordError, GeminiQuotaError, TranslationUnavailableError } from "./types";
 import { loadPdf, extractPageText } from "./pdf/extract";
 import {
   computeScale, renderPageToCanvas, maskBlocks, canvasToJpeg, makePreview, drawTranslations,
@@ -125,11 +125,11 @@ async function handleFile(file: File): Promise<void> {
 }
 
 // --- motor kurulumu ---
-function buildOrchestrator(includeGemini: boolean): Orchestrator {
+function buildOrchestrator(includeGemini: boolean, onWait?: (ms: number) => void): Orchestrator {
   const engines: TranslationEngine[] = [];
   const key = getGeminiKey();
   if (includeGemini && key) engines.push(new GeminiEngine(key));
-  engines.push(new GoogleGtxEngine(), new LingvaEngine());
+  engines.push(new GoogleGtxEngine(undefined, undefined, undefined, { onWait }), new LingvaEngine());
   return new Orchestrator(engines);
 }
 
@@ -166,10 +166,17 @@ async function startTranslation(): Promise<void> {
   abortCtrl = new AbortController();
   const signal = abortCtrl.signal;
 
-  let orchestrator = buildOrchestrator(true);
+  // hız sınırı beklemesini kullanıcıya bildir
+  const showWait = (ms: number) => {
+    statusEl.textContent = STR.waitingRateLimit(Math.round(ms / 1000));
+  };
+  let orchestrator = buildOrchestrator(true, showWait);
   const source = sourceSel.value;
   const target = targetSel.value;
+  // dev işlerde bellek ve çıktı boyutunu dizginle
+  const bigJob = pages.length > 150;
 
+  let builder: OutputPdfBuilder | null = null;
   try {
     const doc = await loadPdf(pdfBytes.slice(0));
     const base = import.meta.env.BASE_URL + "fonts/";
@@ -177,7 +184,8 @@ async function startTranslation(): Promise<void> {
       fetch(base + "NotoSans-Regular.ttf").then((r) => r.arrayBuffer()),
       fetch(base + "NotoSans-Bold.ttf").then((r) => r.arrayBuffer()),
     ]);
-    const builder = await OutputPdfBuilder.create(new Uint8Array(regular), new Uint8Array(bold));
+    builder = await OutputPdfBuilder.create(new Uint8Array(regular), new Uint8Array(bold));
+    const pdfBuilder = builder;
 
     const stage: PageStage = {
       extract: async (n) => extractPageText(await doc.getPage(n)),
@@ -188,7 +196,7 @@ async function startTranslation(): Promise<void> {
         } catch (e) {
           if (e instanceof GeminiQuotaError) {
             if (confirm(STR.geminiQuota)) {
-              orchestrator = buildOrchestrator(false);
+              orchestrator = buildOrchestrator(false, showWait);
               const { results } = await orchestrator.translate(texts, source, target, sig);
               return results;
             }
@@ -200,25 +208,28 @@ async function startTranslation(): Promise<void> {
       renderMasked: async (n, blocks: Block[]) => {
         const page = await doc.getPage(n);
         const viewport = page.getViewport({ scale: 1 });
-        const scale = computeScale(viewport.width, viewport.height);
+        let scale = computeScale(viewport.width, viewport.height);
+        if (bigJob) scale = Math.min(scale, 1.4);
         const canvas = await renderPageToCanvas(page, scale);
         const pair = document.createElement("div");
         pair.className = "pair";
         if (blocks.some((b) => b.translated)) {
-          const orig = makePreview(canvas, 900);
+          const orig = makePreview(canvas, 700);
           orig.className = "original";
           pair.appendChild(orig);
         }
         maskBlocks(canvas, blocks, scale);
-        const jpeg = await canvasToJpeg(canvas);
+        const jpeg = await canvasToJpeg(canvas, bigJob ? 0.8 : 0.85);
         drawTranslations(canvas, blocks, scale);
-        pair.appendChild(makePreview(canvas));
+        pair.appendChild(makePreview(canvas, bigJob ? 700 : 900));
         previewEl.appendChild(pair);
+        // uzun kitaplarda DOM'da yalnızca son sayfalar kalsın (bellek)
+        while (previewEl.children.length > 6) previewEl.removeChild(previewEl.firstChild as Node);
         const out = { jpeg, widthPt: viewport.width, heightPt: viewport.height };
         canvas.width = 0; canvas.height = 0; // belleği bırak
         return out;
       },
-      addPage: (jpeg, w, h, blocks) => builder.addPage(jpeg, w, h, blocks),
+      addPage: (jpeg, w, h, blocks) => pdfBuilder.addPage(jpeg, w, h, blocks),
     };
 
     statusEl.textContent = STR.progress(0, pages.length);
@@ -235,7 +246,7 @@ async function startTranslation(): Promise<void> {
     );
 
     statusEl.textContent = STR.buildingPdf;
-    outputBytes = await builder.save();
+    outputBytes = await pdfBuilder.save();
     statusEl.textContent = STR.doneMsg;
     if (result.scannedPages.length === pages.length) warn(STR.errScannedAll, true);
     else if (result.scannedPages.length > 0) warn(STR.warnScannedSome(result.scannedPages.length));
@@ -244,7 +255,13 @@ async function startTranslation(): Promise<void> {
     void doc.destroy();
   } catch (e) {
     if (isAbort(e)) statusEl.textContent = STR.cancelled;
-    else {
+    else if (e instanceof TranslationUnavailableError && builder) {
+      // servis erişilemez: o ana kadarki sayfaları kısmî çıktı olarak sun
+      outputBytes = await builder.save();
+      statusEl.textContent = "";
+      warn(STR.errServiceDown, true);
+      downloadBtn.hidden = false;
+    } else {
       console.error(e);
       statusEl.textContent = "";
       warn(STR.errBroken, true);

@@ -1,5 +1,6 @@
 import { makeChunks, splitTranslated } from "./chunking";
 import { mapPool, withRetry, isAbort } from "../util";
+import { RateLimitError } from "../types";
 
 export interface BatchOpts {
   concurrency: number;
@@ -28,6 +29,8 @@ export async function runBatch(
       parts = splitTranslated(chunk, translated);
     } catch (e) {
       if (isAbort(e)) throw e;
+      // hız sınırı: blokları tek tek denemek de aynı engele çarpar, boşuna bekletme
+      if (e instanceof RateLimitError) return;
     }
     if (parts) {
       chunk.indices.forEach((blockIdx, j) => { out[blockIdx] = parts![j]; });
