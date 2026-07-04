@@ -13,6 +13,8 @@ import { Orchestrator } from "./translate/orchestrator";
 import { getGeminiKey, setGeminiKey } from "./translate/settings";
 import { runPipeline, type PageStage } from "./pipeline";
 import { isAbort } from "./util";
+import { OcrManager } from "./ocr/manager";
+import { getOcrLang, ocrParagraphsToBlocks } from "./ocr/ocr";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -36,6 +38,7 @@ $("start-btn").textContent = STR.start;
 $("cancel-btn").textContent = STR.cancel;
 $("download-btn").textContent = STR.download;
 $("compare-label").textContent = STR.compare;
+$("ocr-label").textContent = STR.ocrFigures;
 
 const sourceSel = $<HTMLSelectElement>("source-lang");
 const targetSel = $<HTMLSelectElement>("target-lang");
@@ -175,6 +178,10 @@ async function startTranslation(): Promise<void> {
   const target = targetSel.value;
   // dev işlerde bellek ve çıktı boyutunu dizginle
   const bigJob = pages.length > 150;
+  const ocrFigures = $<HTMLInputElement>("ocr-toggle").checked;
+  const ocrManager = new OcrManager();
+  let ocrFailedPages = 0;
+  let ocrEngineReady = false;
 
   let builder: OutputPdfBuilder | null = null;
   try {
@@ -203,6 +210,27 @@ async function startTranslation(): Promise<void> {
             throw new DOMException("aborted", "AbortError");
           }
           throw e;
+        }
+      },
+      ocr: async (n) => {
+        if (!ocrEngineReady) {
+          statusEl.textContent = STR.ocrPreparing;
+        }
+        const page = await doc.getPage(n);
+        const viewport = page.getViewport({ scale: 1 });
+        let scale = computeScale(viewport.width, viewport.height);
+        if (bigJob) scale = Math.min(scale, 1.4);
+        const canvas = await renderPageToCanvas(page, scale);
+        try {
+          const paras = await ocrManager.recognize(canvas, getOcrLang(source));
+          ocrEngineReady = true;
+          return ocrParagraphsToBlocks(paras, scale);
+        } catch (e) {
+          console.error("OCR hatası:", e);
+          ocrFailedPages++;
+          return [];
+        } finally {
+          canvas.width = 0; canvas.height = 0;
         }
       },
       renderMasked: async (n, blocks: Block[]) => {
@@ -241,8 +269,12 @@ async function startTranslation(): Promise<void> {
           progressEl.value = Math.round((done / total) * 100);
           statusEl.textContent = STR.progress(done, total);
         },
+        onOcrPage: (n) => {
+          statusEl.textContent = STR.ocrReading(n);
+        },
       },
-      signal
+      signal,
+      { ocrFigures }
     );
 
     statusEl.textContent = STR.buildingPdf;
@@ -251,6 +283,7 @@ async function startTranslation(): Promise<void> {
     if (result.scannedPages.length === pages.length) warn(STR.errScannedAll, true);
     else if (result.scannedPages.length > 0) warn(STR.warnScannedSome(result.scannedPages.length));
     if (result.failedBlocks > 0) warn(STR.warnFailedBlocks(result.failedBlocks));
+    if (ocrFailedPages > 0) warn(STR.warnOcrFailed(ocrFailedPages));
     downloadBtn.hidden = false;
     void doc.destroy();
   } catch (e) {
@@ -271,5 +304,6 @@ async function startTranslation(): Promise<void> {
     cancelBtn.hidden = true;
     progressEl.hidden = true;
     abortCtrl = null;
+    void ocrManager.dispose();
   }
 }

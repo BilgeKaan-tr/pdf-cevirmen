@@ -28,8 +28,8 @@ export const STR = {
   errBroken: "Dosya açılamadı. PDF bozuk ya da desteklenmeyen bir biçimde olabilir.",
   errNotPdf: "Lütfen bir PDF dosyası seçin.",
   errScannedAll:
-    "Bu PDF taranmış görüntülerden oluşuyor (metin katmanı yok). " +
-    "Sürüm 1 OCR desteklemiyor; metin tabanlı bir PDF deneyin.",
+    "Bu PDF'te okunabilir metin bulunamadı (görsel okuma da sonuç vermedi). " +
+    "Sayfalar boş ya da çok düşük kaliteli olabilir.",
   warnScannedSome: (n: number) =>
     `${n} sayfa taranmış görüntü olduğu için çevrilemedi; bu sayfalar olduğu gibi kopyalandı.`,
   warnFailedBlocks: (n: number) =>
@@ -42,6 +42,11 @@ export const STR = {
   engineGemini: "Kaliteli motor (Gemini anahtarınız kayıtlı)",
   netPaused: "Bağlantı sorunu. Tekrar denemek için düğmeye basın.",
   retry: "Yeniden dene",
+  ocrFigures: "Görsellerdeki metinleri de çevir (daha yavaş)",
+  ocrReading: (n: number) => `Sayfa ${n} görselden okunuyor…`,
+  ocrPreparing: "Görsel okuma motoru hazırlanıyor (ilk kullanımda ~12 MB iner)…",
+  warnOcrFailed: (n: number) =>
+    `${n} sayfada görsel okuma başarısız oldu; bu sayfalar olduğu gibi bırakıldı.`,
   waitingRateLimit: (sec: number) =>
     `Çeviri servisi yoğun — ${sec} saniye bekleniyor, sonra kaldığı yerden devam edecek…`,
   errServiceDown:
