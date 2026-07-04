@@ -1,6 +1,7 @@
 import { groupIntoLines, groupIntoBlocks } from "./pdf/grouping";
 import type { PageText } from "./pdf/extract";
 import { TranslationUnavailableError, type Block } from "./types";
+import { filterNonOverlapping } from "./ocr/overlap";
 
 // Üst üste bu kadar sayfa hiç çevrilemezse servis erişilemez kabul edilir;
 // yüzlerce sayfayı sessizce çevirisiz kopyalamak yerine işlem durdurulur
@@ -15,11 +16,19 @@ export interface PageStage {
     blocks: Block[]
   ): Promise<{ jpeg: Uint8Array; widthPt: number; heightPt: number }>;
   addPage(jpeg: Uint8Array, widthPt: number, heightPt: number, blocks: Block[]): Promise<void>;
+  /** Sayfayı görselden okur; paragrafları Block olarak döndürür. Yoksa OCR devre dışı. */
+  ocr?(pageNum: number): Promise<Block[]>;
 }
 
 export interface PipelineEvents {
   onPageDone?(done: number, total: number): void;
   onScannedPage?(pageNum: number): void;
+  onOcrPage?(pageNum: number): void;
+}
+
+export interface PipelineOpts {
+  /** Metin katmanlı sayfalarda da figür/resim yazılarını OCR'la. */
+  ocrFigures?: boolean;
 }
 
 export interface PipelineResult {
@@ -33,7 +42,8 @@ export async function runPipeline(
   pageNumbers: number[],
   stage: PageStage,
   events: PipelineEvents = {},
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  opts: PipelineOpts = {}
 ): Promise<PipelineResult> {
   const result: PipelineResult = {
     translatedPages: 0,
@@ -46,12 +56,25 @@ export async function runPipeline(
   for (const pageNum of pageNumbers) {
     if (signal?.aborted) throw new DOMException("aborted", "AbortError");
     const pageText = await stage.extract(pageNum);
-    const blocks = groupIntoBlocks(groupIntoLines(pageText.items));
+    let blocks = groupIntoBlocks(groupIntoLines(pageText.items));
+    let ocrProvided = false;
+    if (pageText.scanned && stage.ocr) {
+      events.onOcrPage?.(pageNum);
+      const ocrBlocks = await stage.ocr(pageNum);
+      if (ocrBlocks.length > 0) {
+        blocks = ocrBlocks;
+        ocrProvided = true;
+      }
+    } else if (!pageText.scanned && opts.ocrFigures && stage.ocr) {
+      events.onOcrPage?.(pageNum);
+      const ocrBlocks = await stage.ocr(pageNum);
+      blocks = blocks.concat(filterNonOverlapping(ocrBlocks, blocks));
+    }
     const translatableIdx = blocks
       .map((b, i) => (b.translatable ? i : -1))
       .filter((i) => i >= 0);
 
-    if (pageText.scanned || translatableIdx.length === 0) {
+    if ((pageText.scanned && !ocrProvided) || translatableIdx.length === 0) {
       if (pageText.scanned) {
         result.scannedPages.push(pageNum);
         events.onScannedPage?.(pageNum);

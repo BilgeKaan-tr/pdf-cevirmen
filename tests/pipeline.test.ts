@@ -66,6 +66,46 @@ describe("runPipeline", () => {
     // ilk 3 sayfa yine de çıktıya eklendi (kısmî indirme mümkün)
     expect(stage.added.length).toBe(3);
   });
+  it("taranmış sayfa OCR blok dönerse normal çeviri yoluna girer", async () => {
+    const stage = fakeStage({ 1: [] }); // metin katmanı yok → scanned
+    stage.ocr = async () => [{
+      text: "Scanned title text", x: 50, y: 100, width: 300, height: 30,
+      fontSize: 12, bold: false, translatable: true, translated: null, failed: false,
+    }];
+    const onOcrPage = vi.fn();
+    const result = await runPipeline([1], stage, { onOcrPage });
+    expect(onOcrPage).toHaveBeenCalledWith(1);
+    expect(result.scannedPages).toEqual([]);
+    expect(result.translatedPages).toBe(1);
+    expect(stage.added[0]).toBe(1); // çevrilmiş 1 blok yerleşti
+  });
+  it("taranmış sayfada OCR boş dönerse v1 gibi kopyalanır", async () => {
+    const stage = fakeStage({ 1: [] });
+    stage.ocr = async () => [];
+    const result = await runPipeline([1], stage);
+    expect(result.scannedPages).toEqual([1]);
+    expect(stage.added[0]).toBe(0);
+  });
+  it("figür modu: metin sayfasında örtüşmeyen OCR bloğu eklenir", async () => {
+    const stage = fakeStage({ 1: threeItems });
+    const seen: string[][] = [];
+    const origTranslate = stage.translate;
+    stage.translate = async (texts, sig) => { seen.push([...texts]); return origTranslate(texts, sig); };
+    stage.ocr = async () => [{
+      text: "Figure caption text", x: 400, y: 500, width: 150, height: 20,
+      fontSize: 10, bold: false, translatable: true, translated: null, failed: false,
+    }];
+    const result = await runPipeline([1], stage, {}, undefined, { ocrFigures: true });
+    expect(seen[0]).toContain("Figure caption text");
+    expect(result.translatedPages).toBe(1);
+  });
+  it("figür modu kapalıyken metin sayfasında OCR çağrılmaz", async () => {
+    const stage = fakeStage({ 1: threeItems });
+    const ocr = vi.fn(async () => []);
+    stage.ocr = ocr;
+    await runPipeline([1], stage);
+    expect(ocr).not.toHaveBeenCalled();
+  });
   it("araya çevrilen sayfa girerse sayaç sıfırlanır, hata fırlamaz", async () => {
     let call = 0;
     const stage = fakeStage(
