@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2563eb" />
+  <title>PDF Çevirmen — Ücretsiz PDF Çevirisi</title>
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+  <script type="module" crossorigin src="./assets/index-CQeSNcqY.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-kE9hqaKy.css">
+<link rel="manifest" href="./manifest.webmanifest"></head>
+<body>
+  <header>
+    <img src="./icon.svg" alt="" width="44" height="44" />
+    <div>
+      <h1 id="app-name"></h1>
+      <p id="tagline"></p>
+    </div>
+  </header>
+
+  <main>
+    <section id="setup-screen" class="card">
+      <div id="dropzone" tabindex="0" role="button">
+        <svg viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><path fill="currentColor" d="M19 13v6H5v-6H3v8h18v-8zM11 3v10.17l-3.59-3.58L6 11l6 6 6-6-1.41-1.41L13 13.17V3z"/></svg>
+        <p id="drop-hint"></p>
+        <input type="file" id="file-input" accept="application/pdf,.pdf" hidden />
+      </div>
+      <div class="controls">
+        <label><span id="source-label"></span><select id="source-lang"></select></label>
+        <label><span id="target-label"></span><select id="target-lang"></select></label>
+        <span id="engine-badge" class="badge"></span>
+      </div>
+      <details id="settings">
+        <summary id="settings-title"></summary>
+        <label>
+          <span id="gemini-key-label"></span>
+          <input type="password" id="gemini-key" autocomplete="off" />
+        </label>
+        <p id="gemini-key-hint" class="hint"></p>
+      </details>
+      <p id="privacy" class="hint"></p>
+    </section>
+
+    <section id="work-screen" class="card" hidden>
+      <div class="controls">
+        <label>
+          <span id="range-label"></span>
+          <input type="number" id="range-from" min="1" class="num" />
+          –
+          <input type="number" id="range-to" min="1" class="num" />
+        </label>
+        <label><input type="checkbox" id="ocr-toggle" /> <span id="ocr-label"></span></label>
+        <label><input type="checkbox" id="compare-toggle" /> <span id="compare-label"></span></label>
+      </div>
+      <div class="controls">
+        <button id="start-btn"></button>
+        <button id="cancel-btn" class="secondary" hidden></button>
+        <button id="download-btn" hidden></button>
+      </div>
+      <p id="status" role="status"></p>
+      <progress id="progress" max="100" value="0" hidden></progress>
+      <div id="warnings"></div>
+      <div id="preview"></div>
+    </section>
+  </main>
+
+  <footer>
+    <span>🔒 <span id="footer-privacy"></span></span>
+    <span>·</span>
+    <span id="footer-oss"></span>
+    <span>·</span>
+    <span id="footer-version"></span>
+  </footer>
+
+</body>
+</html>
