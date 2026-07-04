@@ -36,8 +36,8 @@ export const STR = {
     `${n} metin bloğu çevrilemedi ve orijinal haliyle bırakıldı.`,
   warnBigFile:
     "Bu PDF çok büyük (300+ sayfa). Tamamını çevirebilirsiniz ama sayfa aralığı seçmek daha hızlı olur.",
-  geminiQuota:
-    "Gemini ücretsiz kotası doldu. Google motoruyla devam edilsin mi?",
+  noticeGeminiQuotaFallback:
+    "Gemini ücretsiz kotası doldu; kalan sayfalar için otomatik olarak hızlı motora geçildi.",
   engineGoogle: "Hızlı motor (anahtarsız)",
   engineGemini: "Kaliteli motor (Gemini anahtarınız kayıtlı)",
   netPaused: "Bağlantı sorunu. Tekrar denemek için düğmeye basın.",

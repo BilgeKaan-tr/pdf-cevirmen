@@ -180,6 +180,7 @@ async function startTranslation(): Promise<void> {
     statusEl.textContent = STR.waitingRateLimit(Math.round(ms / 1000));
   };
   let orchestrator = buildOrchestrator(true, showWait);
+  let geminiQuotaHit = false;
   const source = sourceSel.value;
   const target = targetSel.value;
   // dev işlerde bellek ve çıktı boyutunu dizginle
@@ -208,12 +209,14 @@ async function startTranslation(): Promise<void> {
           return results;
         } catch (e) {
           if (e instanceof GeminiQuotaError) {
-            if (confirm(STR.geminiQuota)) {
+            // mobil/PWA'da confirm() güvenilir çalışmadığından soru sormadan,
+            // sessizce kalan motorlarla devam edilir; kullanıcı sonda bilgilendirilir.
+            if (!geminiQuotaHit) {
+              geminiQuotaHit = true;
               orchestrator = buildOrchestrator(false, showWait);
-              const { results } = await orchestrator.translate(texts, source, target, sig);
-              return results;
             }
-            throw new DOMException("aborted", "AbortError");
+            const { results } = await orchestrator.translate(texts, source, target, sig);
+            return results;
           }
           throw e;
         }
@@ -290,6 +293,7 @@ async function startTranslation(): Promise<void> {
     else if (result.scannedPages.length > 0) warn(STR.warnScannedSome(result.scannedPages.length));
     if (result.failedBlocks > 0) warn(STR.warnFailedBlocks(result.failedBlocks));
     if (ocrFailedPages > 0) warn(STR.warnOcrFailed(ocrFailedPages));
+    if (geminiQuotaHit) warn(STR.noticeGeminiQuotaFallback);
     downloadBtn.hidden = false;
     void doc.destroy();
   } catch (e) {
