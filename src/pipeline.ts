@@ -3,11 +3,6 @@ import type { PageText } from "./pdf/extract";
 import { TranslationUnavailableError, type Block } from "./types";
 import { filterNonOverlapping } from "./ocr/overlap";
 
-// Üst üste bu kadar sayfa hiç çevrilemezse servis erişilemez kabul edilir;
-// yüzlerce sayfayı sessizce çevirisiz kopyalamak yerine işlem durdurulur
-// (o ana kadarki sayfalar kısmî çıktı olarak indirilebilir).
-const MAX_CONSECUTIVE_FAILED_PAGES = 3;
-
 export interface PageStage {
   extract(pageNum: number): Promise<PageText>;
   translate(texts: string[], signal?: AbortSignal): Promise<(string | null)[]>;
@@ -29,7 +24,18 @@ export interface PipelineEvents {
 export interface PipelineOpts {
   /** Metin katmanlı sayfalarda da figür/resim yazılarını OCR'la. */
   ocrFigures?: boolean;
+  now?: () => number;
+  /**
+   * Bu kadar GERÇEK süre boyunca hiç sayfa çevrilemezse servis kalıcı
+   * erişilemez kabul edilir ve işlem durur (o ana kadarki sayfalar kısmî
+   * çıktı olarak sunulur). Motorlar artık kalıcı vazgeçmediği için (soğuma
+   * penceresi kapanınca kendiliğinden dener) bu sayfa sayısı değil GERÇEK
+   * ZAMAN bazlı bir güvenlik ağıdır — geçici tıkanıklıkta iş durmaz.
+   */
+  stallTimeoutMs?: number;
 }
+
+const DEFAULT_STALL_TIMEOUT_MS = 6 * 60_000; // 6 dakika ilerlemesizlik
 
 export interface PipelineResult {
   translatedPages: number;
@@ -51,8 +57,10 @@ export async function runPipeline(
     failedBlocks: 0,
     totalBlocks: 0,
   };
+  const now = opts.now ?? Date.now;
+  const stallTimeoutMs = opts.stallTimeoutMs ?? DEFAULT_STALL_TIMEOUT_MS;
+  let lastProgressAt = now();
   let done = 0;
-  let consecutiveFailed = 0;
   for (const pageNum of pageNumbers) {
     if (signal?.aborted) throw new DOMException("aborted", "AbortError");
     const pageText = await stage.extract(pageNum);
@@ -101,14 +109,16 @@ export async function runPipeline(
       const r = await stage.renderMasked(pageNum, blocks);
       await stage.addPage(r.jpeg, r.widthPt, r.heightPt, blocks);
       result.translatedPages++;
-      if (okOnPage === 0) consecutiveFailed++;
-      else consecutiveFailed = 0;
+      if (okOnPage > 0) {
+        lastProgressAt = now();
+      } else if (now() - lastProgressAt >= stallTimeoutMs) {
+        done++;
+        events.onPageDone?.(done, pageNumbers.length);
+        throw new TranslationUnavailableError(pageNum);
+      }
     }
     done++;
     events.onPageDone?.(done, pageNumbers.length);
-    if (consecutiveFailed >= MAX_CONSECUTIVE_FAILED_PAGES) {
-      throw new TranslationUnavailableError();
-    }
   }
   return result;
 }

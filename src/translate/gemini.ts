@@ -1,5 +1,6 @@
-import { GeminiQuotaError, type TranslationEngine } from "../types";
+import type { TranslationEngine } from "../types";
 import { withRetry, isAbort } from "../util";
+import { Cooldown } from "./cooldown";
 
 const MODEL = "gemini-flash-latest";
 const GROUP_MAX_CHARS = 8000;
@@ -30,19 +31,33 @@ export function parseGeminiResponse(text: string, count: number): string[] | nul
   return found === count ? (out as string[]) : null;
 }
 
+class GeminiRateLimited extends Error {
+  constructor() { super("gemini rate limited"); this.name = "GeminiRateLimited"; }
+}
+
+export interface GeminiOpts {
+  now?: () => number;
+  onWait?: (ms: number) => void;
+}
+
 export class GeminiEngine implements TranslationEngine {
   readonly id = "gemini" as const;
   private lastRequestAt = 0;
+  private cooldown: Cooldown;
 
   constructor(
     private apiKey: string,
     private fetchFn: typeof fetch = (...a) => fetch(...a),
     private minIntervalMs = 4500,
     private sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
-    private retryDelays: number[] = [2000, 5000]
-  ) {}
+    private retryDelays: number[] = [2000, 5000],
+    opts: GeminiOpts = {}
+  ) {
+    this.cooldown = new Cooldown({ now: opts.now, onWait: opts.onWait });
+  }
 
   private async request(prompt: string, signal?: AbortSignal): Promise<string> {
+    if (this.cooldown.isBlocked()) throw new GeminiRateLimited();
     const wait = this.lastRequestAt + this.minIntervalMs - Date.now();
     if (wait > 0) await this.sleep(wait);
     this.lastRequestAt = Date.now();
@@ -58,13 +73,17 @@ export class GeminiEngine implements TranslationEngine {
         signal,
       }
     );
-    if (res.status === 429) throw new GeminiQuotaError();
+    if (res.status === 429) {
+      this.cooldown.escalate();
+      throw new GeminiRateLimited();
+    }
     if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`);
     const data = (await res.json()) as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
     };
     const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
     if (text.length === 0) throw new Error("boş Gemini yanıtı");
+    this.cooldown.reset();
     return text;
   }
 
@@ -72,7 +91,7 @@ export class GeminiEngine implements TranslationEngine {
     return {
       delays: this.retryDelays,
       signal,
-      retryIf: (e: unknown) => !(e instanceof GeminiQuotaError),
+      retryIf: (e: unknown) => !(e instanceof GeminiRateLimited),
     };
   }
 
@@ -98,6 +117,10 @@ export class GeminiEngine implements TranslationEngine {
 
     const out: (string | null)[] = new Array(texts.length).fill(null);
     for (const group of groups) {
+      // Soğuma penceresi açıkken bu ve sonraki gruplar için ağa hiç çıkma —
+      // bir sonraki sayfa/çağrı pencere kapanınca kendiliğinden yeniden dener.
+      if (this.cooldown.isBlocked()) break;
+
       const groupTexts = group.map((i) => texts[i]);
       let parts: string[] | null = null;
       try {
@@ -107,13 +130,15 @@ export class GeminiEngine implements TranslationEngine {
         );
         parts = parseGeminiResponse(raw, groupTexts.length);
       } catch (e) {
-        if (isAbort(e) || e instanceof GeminiQuotaError) throw e;
+        if (isAbort(e)) throw e;
+        if (e instanceof GeminiRateLimited) continue; // sıradaki grup da bloklu olacak, döngü kendi kontrol eder
       }
       if (parts) {
         group.forEach((blockIdx, j) => { out[blockIdx] = parts![j]; });
         continue;
       }
       for (let j = 0; j < group.length; j++) {
+        if (this.cooldown.isBlocked()) break;
         try {
           const raw = await withRetry(
             () => this.request(buildGeminiPrompt([groupTexts[j]], source, target), signal),
@@ -122,7 +147,7 @@ export class GeminiEngine implements TranslationEngine {
           const single = parseGeminiResponse(raw, 1);
           out[group[j]] = single ? single[0] : null;
         } catch (e) {
-          if (isAbort(e) || e instanceof GeminiQuotaError) throw e;
+          if (isAbort(e)) throw e;
           out[group[j]] = null;
         }
       }

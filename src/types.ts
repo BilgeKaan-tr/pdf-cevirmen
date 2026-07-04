@@ -47,14 +47,16 @@ export class PdfPasswordError extends Error {
   constructor() { super("password"); this.name = "PdfPasswordError"; }
 }
 
-export class GeminiQuotaError extends Error {
-  constructor() { super("gemini quota"); this.name = "GeminiQuotaError"; }
-}
-
 export class RateLimitError extends Error {
   constructor() { super("rate limited"); this.name = "RateLimitError"; }
 }
 
 export class TranslationUnavailableError extends Error {
-  constructor() { super("translation unavailable"); this.name = "TranslationUnavailableError"; }
+  /** İşlemin durduğu sayfa numarası — "kaldığı yerden devam et" için kullanılır. */
+  readonly stoppedAtPage: number;
+  constructor(stoppedAtPage: number) {
+    super("translation unavailable");
+    this.name = "TranslationUnavailableError";
+    this.stoppedAtPage = stoppedAtPage;
+  }
 }

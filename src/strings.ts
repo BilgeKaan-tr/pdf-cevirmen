@@ -36,8 +36,6 @@ export const STR = {
     `${n} metin bloğu çevrilemedi ve orijinal haliyle bırakıldı.`,
   warnBigFile:
     "Bu PDF çok büyük (300+ sayfa). Tamamını çevirebilirsiniz ama sayfa aralığı seçmek daha hızlı olur.",
-  noticeGeminiQuotaFallback:
-    "Gemini ücretsiz kotası doldu; kalan sayfalar için otomatik olarak hızlı motora geçildi.",
   engineGoogle: "Hızlı motor (anahtarsız)",
   engineGemini: "Kaliteli motor (Gemini anahtarınız kayıtlı)",
   netPaused: "Bağlantı sorunu. Tekrar denemek için düğmeye basın.",
@@ -53,9 +51,10 @@ export const STR = {
   waitingRateLimit: (sec: number) =>
     `Çeviri servisi yoğun — ${sec} saniye bekleniyor, sonra kaldığı yerden devam edecek…`,
   errServiceDown:
-    "Çeviri servisine art arda ulaşılamadı (art arda sayfalar çevrilemedi). " +
-    "İnternetinizi kontrol edin ya da birkaç dakika sonra 'Çeviriyi Başlat' ile tekrar deneyin. " +
-    "O ana kadar biten sayfaları indirebilirsiniz.",
+    "Çeviri servisine uzun süredir ulaşılamıyor. İnternetinizi kontrol edin; " +
+    "sayfa aralığı kaldığınız yerden devam edecek şekilde ayarlandı, " +
+    "'Çeviriyi Başlat'a tekrar basarak devam edebilirsiniz. " +
+    "O ana kadar biten sayfaları da indirebilirsiniz.",
 } as const;
 
 // Kaynak diller: otomatik + yaygın diller (her alfabe kaynak olabilir)

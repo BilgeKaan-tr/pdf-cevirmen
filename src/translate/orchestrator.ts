@@ -1,4 +1,4 @@
-import { GeminiQuotaError, type EngineId, type TranslationEngine } from "../types";
+import type { EngineId, TranslationEngine } from "../types";
 import { isAbort } from "../util";
 
 export class Orchestrator {
@@ -18,8 +18,8 @@ export class Orchestrator {
         const okCount = results.filter((r) => r !== null).length;
         if (okCount > 0 || texts.length === 0) return { results, engineId: engine.id };
       } catch (e) {
-        if (isAbort(e) || e instanceof GeminiQuotaError) throw e;
-        // motor düzeyinde hata: sıradaki motora geç
+        if (isAbort(e)) throw e;
+        // motor düzeyinde hata (kota, soğuma, vb.): sıradaki motora sessizce geç
       }
     }
     return {

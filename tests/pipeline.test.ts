@@ -57,14 +57,32 @@ describe("runPipeline", () => {
     const stage = fakeStage({ 1: threeItems });
     await expect(runPipeline([1], stage, {}, ac.signal)).rejects.toThrow();
   });
-  it("3 sayfa üst üste hiç çevrilemezse TranslationUnavailableError fırlatır", async () => {
+  it("gerçek zamanda uzun süre hiç ilerleme olmazsa TranslationUnavailableError fırlatır ve durduğu sayfayı bildirir", async () => {
+    let t = 0;
+    const stage = fakeStage(
+      { 1: threeItems, 2: threeItems, 3: threeItems },
+      async (texts) => { t += 200_000; return texts.map(() => null); } // her çağrıda saat ilerler
+    );
+    const err = await runPipeline([1, 2, 3], stage, {}, undefined, { now: () => t, stallTimeoutMs: 360_000 })
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(TranslationUnavailableError);
+    expect(err.stoppedAtPage).toBe(2); // 2. sayfada 400s birikince durur (360s eşiği aşıldı)
+    // o ana kadarki sayfalar yine de çıktıya eklendi (kısmî indirme mümkün)
+    expect(stage.added.length).toBe(2);
+  });
+  it("ara sıra başarı gerçek zamanlı sayaçları sıfırlar, sonsuza dek devam edebilir", async () => {
+    let t = 0;
+    let call = 0;
     const stage = fakeStage(
       { 1: threeItems, 2: threeItems, 3: threeItems, 4: threeItems },
-      async (texts) => texts.map(() => null)
+      async (texts) => {
+        call++;
+        t += 300_000; // her çağrıda 5 dakika geçiyor (eşiğin altında kalacak şekilde ara ara başarı var)
+        return texts.map(() => (call % 2 === 0 ? "ç" : null)); // çift çağrılarda başarı
+      }
     );
-    await expect(runPipeline([1, 2, 3, 4], stage)).rejects.toBeInstanceOf(TranslationUnavailableError);
-    // ilk 3 sayfa yine de çıktıya eklendi (kısmî indirme mümkün)
-    expect(stage.added.length).toBe(3);
+    const result = await runPipeline([1, 2, 3, 4], stage, {}, undefined, { now: () => t, stallTimeoutMs: 360_000 });
+    expect(result.translatedPages).toBe(4); // hiç durmadan tüm sayfalar işlendi
   });
   it("taranmış sayfa OCR blok dönerse normal çeviri yoluna girer", async () => {
     const stage = fakeStage({ 1: [] }); // metin katmanı yok → scanned

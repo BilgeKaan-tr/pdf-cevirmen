@@ -3,7 +3,7 @@ import { STR, SOURCE_LANGS, TARGET_LANGS } from "./strings";
 
 registerSW({ immediate: true });
 import type { Block, TranslationEngine } from "./types";
-import { PdfPasswordError, GeminiQuotaError, TranslationUnavailableError } from "./types";
+import { PdfPasswordError, TranslationUnavailableError } from "./types";
 import { loadPdf, extractPageText } from "./pdf/extract";
 import {
   computeScale, renderPageToCanvas, maskBlocks, canvasToJpeg, makePreview, drawTranslations,
@@ -179,8 +179,7 @@ async function startTranslation(): Promise<void> {
   const showWait = (ms: number) => {
     statusEl.textContent = STR.waitingRateLimit(Math.round(ms / 1000));
   };
-  let orchestrator = buildOrchestrator(true, showWait);
-  let geminiQuotaHit = false;
+  const orchestrator = buildOrchestrator(true, showWait);
   const source = sourceSel.value;
   const target = targetSel.value;
   // dev işlerde bellek ve çıktı boyutunu dizginle
@@ -204,22 +203,11 @@ async function startTranslation(): Promise<void> {
     const stage: PageStage = {
       extract: async (n) => extractPageText(await doc.getPage(n)),
       translate: async (texts, sig) => {
-        try {
-          const { results } = await orchestrator.translate(texts, source, target, sig);
-          return results;
-        } catch (e) {
-          if (e instanceof GeminiQuotaError) {
-            // mobil/PWA'da confirm() güvenilir çalışmadığından soru sormadan,
-            // sessizce kalan motorlarla devam edilir; kullanıcı sonda bilgilendirilir.
-            if (!geminiQuotaHit) {
-              geminiQuotaHit = true;
-              orchestrator = buildOrchestrator(false, showWait);
-            }
-            const { results } = await orchestrator.translate(texts, source, target, sig);
-            return results;
-          }
-          throw e;
-        }
+        // Her motor kendi soğuma penceresini kendi yönetir (Gemini kotası,
+        // Google/Lingva hız sınırı) — hiçbiri kalıcı vazgeçmez, pencere
+        // kapanınca sonraki sayfada kendiliğinden yeniden denenir.
+        const { results } = await orchestrator.translate(texts, source, target, sig);
+        return results;
       },
       ocr: async (n) => {
         if (!ocrEngineReady) {
@@ -293,17 +281,18 @@ async function startTranslation(): Promise<void> {
     else if (result.scannedPages.length > 0) warn(STR.warnScannedSome(result.scannedPages.length));
     if (result.failedBlocks > 0) warn(STR.warnFailedBlocks(result.failedBlocks));
     if (ocrFailedPages > 0) warn(STR.warnOcrFailed(ocrFailedPages));
-    if (geminiQuotaHit) warn(STR.noticeGeminiQuotaFallback);
     downloadBtn.hidden = false;
     void doc.destroy();
   } catch (e) {
     if (isAbort(e)) statusEl.textContent = STR.cancelled;
     else if (e instanceof TranslationUnavailableError && builder) {
-      // servis erişilemez: o ana kadarki sayfaları kısmî çıktı olarak sun
+      // servis erişilemez: o ana kadarki sayfaları kısmî çıktı olarak sun,
+      // sayfa aralığını kaldığı yerden devam edecek şekilde önceden doldur
       outputBytes = await builder.save();
       statusEl.textContent = "";
       warn(STR.errServiceDown, true);
       downloadBtn.hidden = false;
+      rangeFrom.value = String(Math.min(pageCount, e.stoppedAtPage + 1));
     } else {
       console.error(e);
       statusEl.textContent = "";
