@@ -47,6 +47,9 @@ export const STR = {
   ocrPreparing: "Görsel okuma motoru hazırlanıyor (ilk kullanımda ~12 MB iner)…",
   warnOcrFailed: (n: number) =>
     `${n} sayfada görsel okuma başarısız oldu; bu sayfalar olduğu gibi bırakıldı.`,
+  footerPrivacy: "Dosyanız bilgisayarınızdan çıkmaz",
+  footerOpenSource: "Açık kaynak (MIT)",
+  footerVersion: "v2",
   waitingRateLimit: (sec: number) =>
     `Çeviri servisi yoğun — ${sec} saniye bekleniyor, sonra kaldığı yerden devam edecek…`,
   errServiceDown:

@@ -6,6 +6,8 @@ PDF dosyanız hiçbir sunucuya yüklenmez.
 ## Özellikler
 
 - 🔒 **Gizli:** Dosya bilgisayarınızdan çıkmaz; yalnızca metin parçaları çeviri servisine gider
+- 🖨️ **Taranmış PDF desteği:** Görüntüden metin okuma (OCR) tarayıcıda çalışır; figür/kapak yazıları da isteğe bağlı çevrilir
+- 📱 **Kurulabilir:** Tarayıcıdan "Uygulamayı yükle" ile masaüstü/telefon uygulaması gibi çalışır (PWA)
 - 🖼️ **Düzen korunur:** Çeviri, görsellerin ve sayfa düzeninin içine yerleştirilir; çıktı PDF'te çeviri seçilebilir gerçek metindir
 - ⚡ **Hızlı:** Anahtarsız varsayılan motor; isteğe bağlı ücretsiz Gemini API anahtarıyla daha yüksek kalite
 - 🌍 **Çok dilli:** Kaynak dil otomatik algılanır; onlarca hedef dil (varsayılan Türkçe)
@@ -36,7 +38,7 @@ yeniden üretilebilir).
 
 ## Sınırlar (v1)
 
-- Taranmış (görüntü) PDF'ler çevrilmez — OCR henüz yok; uygulama bunu algılar ve bildirir
+- Taranmış (görüntü) PDF'ler dahili OCR (Tesseract) ile çevrilir; el yazısı ve çok düşük kaliteli taramalarda doğruluk sınırlıdır
 - Hedef dil listesi Latin/Kiril/Yunan alfabeli dillerle sınırlıdır (kaynak dil için sınır yok)
 - Çıktı PDF'te sayfa arka planı görüntüye dönüştürülür (dosya boyutu artabilir)
 

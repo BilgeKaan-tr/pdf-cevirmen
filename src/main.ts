@@ -42,6 +42,9 @@ $("cancel-btn").textContent = STR.cancel;
 $("download-btn").textContent = STR.download;
 $("compare-label").textContent = STR.compare;
 $("ocr-label").textContent = STR.ocrFigures;
+$("footer-privacy").textContent = STR.footerPrivacy;
+$("footer-oss").textContent = STR.footerOpenSource;
+$("footer-version").textContent = STR.footerVersion;
 
 const sourceSel = $<HTMLSelectElement>("source-lang");
 const targetSel = $<HTMLSelectElement>("target-lang");
