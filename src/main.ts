@@ -15,6 +15,7 @@ import { GeminiEngine } from "./translate/gemini";
 import { Orchestrator } from "./translate/orchestrator";
 import { getGeminiKey, setGeminiKey } from "./translate/settings";
 import { runPipeline, type PageStage } from "./pipeline";
+import { PageCache } from "./pdf/page-cache";
 import { isAbort } from "./util";
 import { OcrManager } from "./ocr/manager";
 import { getOcrLang, ocrParagraphsToBlocks } from "./ocr/ocr";
@@ -190,8 +191,10 @@ async function startTranslation(): Promise<void> {
   let ocrEngineReady = false;
 
   let builder: OutputPdfBuilder | null = null;
+  let doc: Awaited<ReturnType<typeof loadPdf>> | null = null;
   try {
-    const doc = await loadPdf(pdfBytes.slice(0));
+    doc = await loadPdf(pdfBytes.slice(0));
+    const pdfDoc = doc;
     const base = import.meta.env.BASE_URL + "fonts/";
     const [regular, bold] = await Promise.all([
       fetch(base + "NotoSans-Regular.ttf").then((r) => r.arrayBuffer()),
@@ -200,8 +203,12 @@ async function startTranslation(): Promise<void> {
     builder = await OutputPdfBuilder.create(new Uint8Array(regular), new Uint8Array(bold));
     const pdfBuilder = builder;
 
+    // Her sayfa hattın 2-3 adımında kullanılır; tek kez getirip önceki sayfayı
+    // cleanup() ile serbest bırakarak uzun kitaplarda bellek birikimini önler.
+    const pageCache = new PageCache((n: number) => pdfDoc.getPage(n));
+
     const stage: PageStage = {
-      extract: async (n) => extractPageText(await doc.getPage(n)),
+      extract: async (n) => extractPageText(await pageCache.get(n)),
       translate: async (texts, sig) => {
         // Her motor kendi soğuma penceresini kendi yönetir (Gemini kotası,
         // Google/Lingva hız sınırı) — hiçbiri kalıcı vazgeçmez, pencere
@@ -213,7 +220,7 @@ async function startTranslation(): Promise<void> {
         if (!ocrEngineReady) {
           statusEl.textContent = STR.ocrPreparing;
         }
-        const page = await doc.getPage(n);
+        const page = await pageCache.get(n);
         const viewport = page.getViewport({ scale: 1 });
         let scale = computeScale(viewport.width, viewport.height);
         if (bigJob) scale = Math.min(scale, 1.4);
@@ -231,7 +238,7 @@ async function startTranslation(): Promise<void> {
         }
       },
       renderMasked: async (n, blocks: Block[]) => {
-        const page = await doc.getPage(n);
+        const page = await pageCache.get(n);
         const viewport = page.getViewport({ scale: 1 });
         let scale = computeScale(viewport.width, viewport.height);
         if (bigJob) scale = Math.min(scale, 1.4);
@@ -282,7 +289,6 @@ async function startTranslation(): Promise<void> {
     if (result.failedBlocks > 0) warn(STR.warnFailedBlocks(result.failedBlocks));
     if (ocrFailedPages > 0) warn(STR.warnOcrFailed(ocrFailedPages));
     downloadBtn.hidden = false;
-    void doc.destroy();
   } catch (e) {
     if (isAbort(e)) statusEl.textContent = STR.cancelled;
     else if (e instanceof TranslationUnavailableError && builder) {
@@ -304,5 +310,7 @@ async function startTranslation(): Promise<void> {
     progressEl.hidden = true;
     abortCtrl = null;
     void ocrManager.dispose();
+    // Hangi yoldan çıkılırsa çıkılsın PDF belgesini serbest bırak (bellek).
+    void doc?.destroy();
   }
 }
