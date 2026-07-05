@@ -20,8 +20,12 @@ describe("parseGeminiResponse", () => {
   it("işaretleyicileri ayrıştırır", () => {
     expect(parseGeminiResponse("⟦0⟧Merhaba\n⟦1⟧Dünya", 2)).toEqual(["Merhaba", "Dünya"]);
   });
-  it("eksik işaretleyicide null döner", () => {
-    expect(parseGeminiResponse("⟦0⟧Merhaba", 2)).toBeNull();
+  it("eksik işaretleyicide o blok için null, diğerleri dolu (parçalı sonuç)", () => {
+    // 1 numaralı işaret kaybolmuş: yalnızca o blok null olmalı, hepsi değil
+    expect(parseGeminiResponse("⟦0⟧Merhaba\n⟦2⟧Selam", 3)).toEqual(["Merhaba", null, "Selam"]);
+  });
+  it("hiç işaret yoksa tümü null", () => {
+    expect(parseGeminiResponse("işaret yok düz metin", 2)).toEqual([null, null]);
   });
 });
 
@@ -38,7 +42,7 @@ describe("GeminiEngine", () => {
     expect(url).toContain("key=KEY");
   });
 
-  it("bozuk yanıtta bloklara tek tek düşer", async () => {
+  it("yanıtın tümü bozuksa bloklara tek tek düşer", async () => {
     const fetchFn = vi
       .fn()
       .mockResolvedValueOnce(geminiOk("işaretleyiciler kayboldu"))
@@ -46,6 +50,18 @@ describe("GeminiEngine", () => {
       .mockResolvedValueOnce(geminiOk("⟦0⟧iki"));
     const out = await fastEngine(fetchFn).translateBatch(["one", "two"], "en", "tr");
     expect(out).toEqual(["bir", "iki"]);
+    expect(fetchFn).toHaveBeenCalledTimes(3); // 1 toplu (başarısız) + 2 tekil
+  });
+
+  it("kısmen bozuk yanıtta YALNIZCA eksik bloğu tek tek çevirir (hız)", async () => {
+    // toplu yanıtta 1. blok işareti kayıp → sadece o blok yeniden istenmeli
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(geminiOk("⟦0⟧bir\n⟦2⟧üç"))
+      .mockResolvedValueOnce(geminiOk("⟦0⟧iki"));
+    const out = await fastEngine(fetchFn).translateBatch(["one", "two", "three"], "en", "tr");
+    expect(out).toEqual(["bir", "iki", "üç"]);
+    expect(fetchFn).toHaveBeenCalledTimes(2); // 1 toplu + yalnızca 1 tekil (2 değil)
   });
 
   it("flash kotası dolunca (429) otomatik olarak flash-lite modeline geçer", async () => {

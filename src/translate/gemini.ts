@@ -18,19 +18,23 @@ export function buildGeminiPrompt(texts: string[], source: string, target: strin
   );
 }
 
-export function parseGeminiResponse(text: string, count: number): string[] | null {
+/**
+ * İşaretli yanıtı ayrıştırır ve HER blok için sonucu döndürür; eksik ya da bozuk
+ * işaretli bloklar `null` kalır. Böylece bir işaret kaybolduğunda tüm sayfayı
+ * yeniden çevirmek yerine yalnızca eksik blok(lar) tekil olarak istenir (hız).
+ */
+export function parseGeminiResponse(text: string, count: number): (string | null)[] {
   const re = /⟦(\d+)⟧([\s\S]*?)(?=⟦\d+⟧|$)/g;
   const out = new Array<string | null>(count).fill(null);
-  let found = 0;
   let match: RegExpExecArray | null;
   while ((match = re.exec(text)) !== null) {
     const idx = Number(match[1]);
     if (idx >= 0 && idx < count && out[idx] === null) {
-      out[idx] = match[2].trim();
-      found++;
+      const val = match[2].trim();
+      out[idx] = val.length > 0 ? val : null;
     }
   }
-  return found === count ? (out as string[]) : null;
+  return out;
 }
 
 class GeminiRateLimited extends Error {
@@ -138,7 +142,7 @@ export class GeminiEngine implements TranslationEngine {
       if (this.cooldown.isBlocked()) break;
 
       const groupTexts = group.map((i) => texts[i]);
-      let parts: string[] | null = null;
+      let parts: (string | null)[] = new Array(groupTexts.length).fill(null);
       try {
         const raw = await withRetry(
           () => this.request(buildGeminiPrompt(groupTexts, source, target), signal),
@@ -149,11 +153,11 @@ export class GeminiEngine implements TranslationEngine {
         if (isAbort(e)) throw e;
         if (e instanceof GeminiRateLimited) continue; // sıradaki grup da bloklu olacak, döngü kendi kontrol eder
       }
-      if (parts) {
-        group.forEach((blockIdx, j) => { out[blockIdx] = parts![j]; });
-        continue;
-      }
+      // Toplu yanıttan gelen blokları yerleştir; YALNIZCA eksik kalanlar için
+      // tekil isteğe düş (tüm sayfayı yeniden çevirmekten çok daha hızlı).
+      group.forEach((blockIdx, j) => { out[blockIdx] = parts[j]; });
       for (let j = 0; j < group.length; j++) {
+        if (parts[j] !== null) continue;
         if (this.cooldown.isBlocked()) break;
         try {
           const raw = await withRetry(
@@ -161,7 +165,7 @@ export class GeminiEngine implements TranslationEngine {
             this.retryOpts(signal)
           );
           const single = parseGeminiResponse(raw, 1);
-          out[group[j]] = single ? single[0] : null;
+          out[group[j]] = single[0];
         } catch (e) {
           if (isAbort(e)) throw e;
           out[group[j]] = null;
