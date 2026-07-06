@@ -21,6 +21,12 @@ export interface GtxOpts {
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
+// Üst üste bu kadar ağ hatası GERÇEK engel kabul edilir; altındaki tekil hatalar
+// withRetry'ın hızlı yeniden deneme zincirine (1sn/2sn/4sn) bırakılır ve kullanıcı
+// beklemeyi görmez. Varsayılan retryDelays [1000,2000,4000] ile uyumlu: withRetry
+// hızlı denemelerini tükettiğinde eşik de dolar ve tam o noktada soğumaya geçilir.
+const NETWORK_ERROR_THRESHOLD = 3;
+
 export class GoogleGtxEngine implements TranslationEngine {
   readonly id = "google" as const;
   private cooldown: Cooldown;
@@ -28,6 +34,7 @@ export class GoogleGtxEngine implements TranslationEngine {
   private sleepFn: (ms: number, signal?: AbortSignal) => Promise<void>;
   private now: () => number;
   private nextSlot = 0;
+  private consecutiveNetworkErrors = 0;
 
   constructor(
     private baseUrl = "https://translate.googleapis.com",
@@ -54,8 +61,10 @@ export class GoogleGtxEngine implements TranslationEngine {
   }
 
   private async request(text: string, source: string, target: string, signal?: AbortSignal): Promise<string> {
-    // Not: Google'ın engel sayfası CORS başlığı taşımadığından tarayıcıda 429
-    // yerine ağ hatası (TypeError) görünebilir; ikisi de aynı soğuma yoluna girer.
+    // Not: Google'ın engel sayfası CORS başlığı taşımadığından tarayıcıda gerçek
+    // engel de geçici bir ağ kesintisi de aynı jenerik TypeError olarak gelir;
+    // ikisi ayırt edilemez. Bu yüzden tek/az hata hızlıca yeniden denenir (sessiz);
+    // yalnızca ÜST ÜSTE eşik kadar hata gerçek engel sayılıp soğumaya girer.
     if (this.cooldown.isBlocked()) throw new RateLimitError();
     await this.pace(signal);
     const url = `${this.baseUrl}/translate_a/single?client=gtx&sl=${encodeURIComponent(source)}&tl=${encodeURIComponent(target)}&dt=t`;
@@ -69,15 +78,23 @@ export class GoogleGtxEngine implements TranslationEngine {
       });
     } catch (e) {
       if (isAbort(e)) throw e;
-      this.cooldown.escalate();
-      throw new RateLimitError();
+      this.consecutiveNetworkErrors++;
+      if (this.consecutiveNetworkErrors >= NETWORK_ERROR_THRESHOLD) {
+        this.consecutiveNetworkErrors = 0;
+        this.cooldown.escalate(); // gerçek engel kabul: "yoğun" mesajı ancak burada
+        throw new RateLimitError();
+      }
+      // geçici hata: retryable düz Error — withRetry hızlı zinciriyle yeniden dener
+      throw new Error("gtx ağ hatası (geçici, yeniden denenecek)");
     }
     if (res.status === 429) {
+      this.consecutiveNetworkErrors = 0;
       this.cooldown.escalate();
       throw new RateLimitError();
     }
     if (!res.ok) throw new Error(`gtx HTTP ${res.status}`);
     this.cooldown.reset();
+    this.consecutiveNetworkErrors = 0;
     return parseGtxResponse(await res.json());
   }
 

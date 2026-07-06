@@ -141,22 +141,34 @@ describe("GoogleGtxEngine", () => {
     expect(onWait).toHaveBeenCalledWith(120_000);
   });
 
-  it("CORS'suz engel (ağ hatası) da hız sınırı gibi ele alınır", async () => {
+  it("tek seferlik ağ hatası hemen kurtarılır, onWait ASLA tetiklenmez", async () => {
     const clock = fakeClock();
     const onWait = vi.fn();
     const fetchFn = vi
       .fn()
       .mockRejectedValueOnce(new TypeError("Failed to fetch"))
       .mockResolvedValueOnce(okResponse(gtxJson("selam")));
-    const engine = new GoogleGtxEngine("https://x", fetchFn as unknown as typeof fetch, [0], {
+    const engine = new GoogleGtxEngine("https://x", fetchFn as unknown as typeof fetch, [0, 0, 0], {
       now: clock.now,
       onWait,
     });
-    const first = await engine.translateBatch(["hi"], "en", "tr");
-    expect(first).toEqual([null]);
-    expect(onWait).toHaveBeenCalledWith(10_000);
-    clock.advance(10_000);
-    const after = await engine.translateBatch(["hi"], "en", "tr");
-    expect(after).toEqual(["selam"]);
+    const out = await engine.translateBatch(["hi"], "en", "tr");
+    expect(out).toEqual(["selam"]);        // tek hıçkırık sessizce kurtarıldı
+    expect(onWait).not.toHaveBeenCalled(); // kullanıcı hiç "yoğun" görmedi
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  it("üst üste 3 ağ hatasından sonra gerçek soğumaya girilir, onWait tetiklenir", async () => {
+    const clock = fakeClock();
+    const onWait = vi.fn();
+    const fetchFn = vi.fn(async () => { throw new TypeError("Failed to fetch"); });
+    const engine = new GoogleGtxEngine("https://x", fetchFn as unknown as typeof fetch, [0, 0, 0], {
+      now: clock.now,
+      onWait,
+    });
+    const out = await engine.translateBatch(["hi"], "en", "tr");
+    expect(out).toEqual([null]);
+    expect(onWait).toHaveBeenCalledWith(10_000); // ancak eşiğe ulaşınca
+    expect(fetchFn).toHaveBeenCalledTimes(3);
   });
 });
