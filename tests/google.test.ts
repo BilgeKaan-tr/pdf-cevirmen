@@ -21,6 +21,24 @@ describe("parseGtxResponse", () => {
   });
 });
 
+describe("GoogleGtxEngine pacing (engel önleme)", () => {
+  it("ardışık istekleri minInterval kadar aralıklı gönderir", async () => {
+    let t = 0;
+    const sleeps: number[] = [];
+    const fetchFn = vi.fn(async () => okResponse(gtxJson("x")));
+    const engine = new GoogleGtxEngine("https://x", fetchFn as unknown as typeof fetch, [0], {
+      minIntervalMs: 1000,
+      now: () => t,
+      sleep: async (ms: number) => { if (ms > 0) { sleeps.push(ms); t += ms; } },
+    });
+    // 3 uzun metin = 3 ayrı parça = 3 istek (4500 char sınırı)
+    const long = "x".repeat(5000);
+    await engine.translateBatch([long, long, long], "en", "tr");
+    // ilk istek beklemez; sonraki her istek ~1000 ms bekler
+    expect(sleeps.filter((s) => s === 1000).length).toBeGreaterThanOrEqual(2);
+  });
+});
+
 describe("GoogleGtxEngine", () => {
   const fakeClock = () => {
     let t = 0;
