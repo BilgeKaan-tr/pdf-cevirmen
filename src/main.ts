@@ -58,7 +58,7 @@ const geminiInput = $<HTMLInputElement>("gemini-key");
 geminiInput.value = getGeminiKey();
 const engineBadge = $("engine-badge");
 function refreshEngineBadge(): void {
-  engineBadge.textContent = getGeminiKey() ? STR.engineGemini : STR.engineGoogle;
+  engineBadge.textContent = getGeminiKey() ? STR.engineGoogleWithGemini : STR.engineGoogle;
 }
 geminiInput.addEventListener("change", () => { setGeminiKey(geminiInput.value); refreshEngineBadge(); });
 refreshEngineBadge();
@@ -136,10 +136,13 @@ async function handleFile(file: File): Promise<void> {
 
 // --- motor kurulumu ---
 function buildOrchestrator(includeGemini: boolean, onWait?: (ms: number) => void): Orchestrator {
-  const engines: TranslationEngine[] = [];
+  // Google gtx birincil: anahtarsız, sayfa başına ~1 sn, tempo sınırı yok.
+  // Gemini yalnızca Google geçici olarak engellenince devreye giren yedek —
+  // çünkü Gemini ücretsiz katmanı istek başına ~4,5 sn temposuyla çok daha yavaş.
+  const engines: TranslationEngine[] = [new GoogleGtxEngine(undefined, undefined, undefined, { onWait })];
   const key = getGeminiKey();
   if (includeGemini && key) engines.push(new GeminiEngine(key));
-  engines.push(new GoogleGtxEngine(undefined, undefined, undefined, { onWait }), new LingvaEngine());
+  engines.push(new LingvaEngine());
   return new Orchestrator(engines);
 }
 

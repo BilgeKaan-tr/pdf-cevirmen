@@ -37,7 +37,7 @@ export const STR = {
   warnBigFile:
     "Bu PDF çok büyük (300+ sayfa). Tamamını çevirebilirsiniz ama sayfa aralığı seçmek daha hızlı olur.",
   engineGoogle: "Hızlı motor (anahtarsız)",
-  engineGemini: "Kaliteli motor (Gemini anahtarınız kayıtlı)",
+  engineGoogleWithGemini: "Hızlı motor + Gemini yedek",
   netPaused: "Bağlantı sorunu. Tekrar denemek için düğmeye basın.",
   retry: "Yeniden dene",
   ocrFigures: "Görsellerdeki metinleri de çevir (daha yavaş)",
